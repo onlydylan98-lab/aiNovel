@@ -2,9 +2,10 @@ import React, { createContext, useContext, useEffect, useReducer, ReactNode } fr
 import { NovelConfig, NovelOutline, ChapterOutline } from "@/lib/gemini";
 import { getDefaultLlmSettings, mergeStoredLlmSettings } from "@/lib/llm-settings";
 export type {
+  CompatibleProtocol,
+  CompatibleSettings,
   GeminiProviderSettings,
   LlmSettings,
-  OpenAICompatibleSettings,
   ProviderType,
 } from "@/lib/llm-settings";
 

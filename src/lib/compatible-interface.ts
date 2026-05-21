@@ -1,16 +1,14 @@
-import type { LlmSettings } from "@/lib/llm-settings";
-import { normalizeOpenAIBaseUrl } from "@/lib/llm-settings";
+import type { CompatibleProtocol, CompatibleSettings } from "@/lib/llm-settings";
+import { normalizeCompatibleBaseUrl } from "@/lib/llm-settings";
 
-export interface OpenAIProxyRequestOptions {
+export interface CompatibleProxyRequestOptions {
   model: string;
   prompt: string;
   stream: boolean;
   temperature?: number;
 }
 
-function isResponsesEndpoint(targetUrl: string): boolean {
-  return /\/responses(?:\?|$)/.test(targetUrl);
-}
+type ResolvedCompatibleProtocol = Exclude<CompatibleProtocol, "auto">;
 
 function extractTextFromContentArray(content: unknown): string {
   if (!Array.isArray(content)) {
@@ -29,7 +27,7 @@ function extractTextFromContentArray(content: unknown): string {
     .join("");
 }
 
-export function extractOpenAICompatibleResponseText(payload: unknown): string {
+export function extractCompatibleResponseText(payload: unknown): string {
   if (!payload || typeof payload !== "object") {
     return "";
   }
@@ -81,7 +79,7 @@ export function extractOpenAICompatibleResponseText(payload: unknown): string {
   return "";
 }
 
-export function extractOpenAICompatibleStreamText(payload: unknown): string[] {
+export function extractCompatibleStreamText(payload: unknown): string[] {
   if (!payload || typeof payload !== "object") {
     return [];
   }
@@ -132,21 +130,41 @@ export function extractOpenAICompatibleStreamText(payload: unknown): string[] {
   return chunks;
 }
 
-export function buildOpenAIProxyRequest(
-  settings: LlmSettings,
-  options: OpenAIProxyRequestOptions
+export function resolveCompatibleProtocol(
+  baseURL: string,
+  protocol: CompatibleProtocol
+): ResolvedCompatibleProtocol {
+  if (protocol === "responses" || protocol === "chat-completions") {
+    return protocol;
+  }
+
+  if (/\/responses(?:\?|$)/.test(baseURL)) {
+    return "responses";
+  }
+
+  if (/\/chat\/completions(?:\?|$)/.test(baseURL)) {
+    return "chat-completions";
+  }
+
+  return "chat-completions";
+}
+
+export function buildCompatibleProxyRequest(
+  settings: CompatibleSettings,
+  options: CompatibleProxyRequestOptions
 ) {
-  const targetUrl = normalizeOpenAIBaseUrl(settings.openaiCompatible.baseURL);
-  const apiKey = settings.openaiCompatible.apiKey.trim();
+  const targetUrl = normalizeCompatibleBaseUrl(settings.baseURL);
+  const apiKey = settings.apiKey.trim();
 
   if (!targetUrl) {
-    throw new Error("OpenAI-compatible Base URL is missing.");
+    throw new Error("Compatible interface Base URL is missing.");
   }
   if (!apiKey) {
-    throw new Error("OpenAI-compatible API Key is missing.");
+    throw new Error("Compatible interface API Key is missing.");
   }
 
-  const requestBody = isResponsesEndpoint(targetUrl)
+  const protocol = resolveCompatibleProtocol(targetUrl, settings.protocol);
+  const requestBody = protocol === "responses"
     ? {
         model: options.model,
         input: [{ role: "user", content: options.prompt }],

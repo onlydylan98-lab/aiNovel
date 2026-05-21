@@ -4,7 +4,7 @@ import { stripJsonFences } from "@/lib/gemini";
 import {
   getDefaultLlmSettings,
   mergeStoredLlmSettings,
-  normalizeOpenAIBaseUrl,
+  normalizeCompatibleBaseUrl,
   type LlmSettings,
 } from "@/lib/llm-settings";
 import {
@@ -22,9 +22,10 @@ const baseSettings: LlmSettings = {
     chapterModel: "g-chapter",
     summaryModel: "g-summary",
   },
-  openaiCompatible: {
+  compatible: {
     baseURL: "https://api.example.com/v1",
     apiKey: "o-key",
+    protocol: "auto",
     outlineModel: "o-outline",
     chapterModel: "o-chapter",
     summaryModel: "o-summary",
@@ -51,9 +52,9 @@ function withImportMetaEnv<T>(
   }
 }
 
-test("normalizeOpenAIBaseUrl only trims surrounding whitespace", () => {
+test("normalizeCompatibleBaseUrl only trims surrounding whitespace", () => {
   assert.equal(
-    normalizeOpenAIBaseUrl("  https://api.example.com/v1/chat/completions  "),
+    normalizeCompatibleBaseUrl("  https://api.example.com/v1/chat/completions  "),
     "https://api.example.com/v1/chat/completions"
   );
 });
@@ -64,7 +65,7 @@ test("stripJsonFences unwraps fenced json", () => {
 
 test("mergeStoredLlmSettings merges nested overrides only when valid", () => {
   const merged = mergeStoredLlmSettings(baseSettings, {
-    provider: "openai-compatible",
+    provider: "compatible",
     openaiCompatible: {
       baseURL: "https://alt.example.com/v1/chat/completions",
       outlineModel: "alt-outline",
@@ -74,31 +75,54 @@ test("mergeStoredLlmSettings merges nested overrides only when valid", () => {
     },
   });
 
-  assert.equal(merged.provider, "openai-compatible");
+  assert.equal(merged.provider, "compatible");
   assert.equal(merged.gemini.apiKey, "g-key-2");
   assert.equal(merged.gemini.chapterModel, "g-chapter");
-  assert.equal(merged.openaiCompatible.baseURL, "https://alt.example.com/v1/chat/completions");
-  assert.equal(merged.openaiCompatible.outlineModel, "alt-outline");
-  assert.equal(merged.openaiCompatible.chapterModel, "o-chapter");
+  assert.equal(merged.compatible.baseURL, "https://alt.example.com/v1/chat/completions");
+  assert.equal(merged.compatible.protocol, "auto");
+  assert.equal(merged.compatible.outlineModel, "alt-outline");
+  assert.equal(merged.compatible.chapterModel, "o-chapter");
 });
 
-test("getDefaultLlmSettings uses Xiaohumini OpenAI-compatible defaults", () => {
+test("mergeStoredLlmSettings migrates openai-compatible storage to compatible settings", () => {
+  const merged = mergeStoredLlmSettings(baseSettings, {
+    provider: "openai-compatible",
+    openaiCompatible: {
+      baseURL: "https://alt.example.com/v1/chat/completions",
+      apiKey: "legacy-key",
+      outlineModel: "legacy-outline",
+      chapterModel: "legacy-chapter",
+      summaryModel: "legacy-summary",
+    },
+  });
+
+  assert.equal(merged.provider, "compatible");
+  assert.equal(merged.compatible.protocol, "auto");
+  assert.equal(merged.compatible.baseURL, "https://alt.example.com/v1/chat/completions");
+  assert.equal(merged.compatible.apiKey, "legacy-key");
+  assert.equal(merged.compatible.outlineModel, "legacy-outline");
+  assert.equal(merged.compatible.chapterModel, "legacy-chapter");
+  assert.equal(merged.compatible.summaryModel, "legacy-summary");
+});
+
+test("getDefaultLlmSettings uses Xiaohumini compatible defaults", () => {
   const defaults = withImportMetaEnv({}, () => getDefaultLlmSettings());
 
   assert.equal(
-    defaults.openaiCompatible.baseURL,
+    defaults.compatible.baseURL,
     "https://xiaohumini.site/v1/chat/completions"
   );
-  assert.equal(defaults.openaiCompatible.outlineModel, "gpt-5.4");
-  assert.equal(defaults.openaiCompatible.chapterModel, "gpt-5.4");
-  assert.equal(defaults.openaiCompatible.summaryModel, "gpt-5.4");
+  assert.equal(defaults.compatible.protocol, "auto");
+  assert.equal(defaults.compatible.outlineModel, "gpt-5.4");
+  assert.equal(defaults.compatible.chapterModel, "gpt-5.4");
+  assert.equal(defaults.compatible.summaryModel, "gpt-5.4");
 });
 
 test("mergeStoredLlmSettings replaces stale freemodel base URL and preserves other stored fields", () => {
   const defaults = withImportMetaEnv({}, () => getDefaultLlmSettings());
 
   const merged = mergeStoredLlmSettings(defaults, {
-    provider: "openai-compatible",
+    provider: "compatible",
     openaiCompatible: {
       baseURL: " https://api.freemodel.dev/v1/chat/completions ",
       apiKey: "stored-key",
@@ -108,15 +132,16 @@ test("mergeStoredLlmSettings replaces stale freemodel base URL and preserves oth
     },
   });
 
-  assert.equal(merged.provider, "openai-compatible");
+  assert.equal(merged.provider, "compatible");
   assert.equal(
-    merged.openaiCompatible.baseURL,
-    defaults.openaiCompatible.baseURL
+    merged.compatible.baseURL,
+    defaults.compatible.baseURL
   );
-  assert.equal(merged.openaiCompatible.apiKey, "stored-key");
-  assert.equal(merged.openaiCompatible.outlineModel, "stored-outline");
-  assert.equal(merged.openaiCompatible.chapterModel, "stored-chapter");
-  assert.equal(merged.openaiCompatible.summaryModel, "stored-summary");
+  assert.equal(merged.compatible.protocol, "auto");
+  assert.equal(merged.compatible.apiKey, "stored-key");
+  assert.equal(merged.compatible.outlineModel, "stored-outline");
+  assert.equal(merged.compatible.chapterModel, "stored-chapter");
+  assert.equal(merged.compatible.summaryModel, "stored-summary");
 });
 
 test("mergeStoredLlmSettings keeps a non-stale URL when freemodel.dev appears outside the hostname", () => {
@@ -130,7 +155,7 @@ test("mergeStoredLlmSettings keeps a non-stale URL when freemodel.dev appears ou
     },
   });
 
-  assert.equal(merged.openaiCompatible.baseURL, nonStaleBaseUrl);
+  assert.equal(merged.compatible.baseURL, nonStaleBaseUrl);
 });
 
 test("resetStoredLlmSettings clears persisted settings and returns defaults", () => {
@@ -160,11 +185,16 @@ test("resetStoredLlmSettings clears persisted settings and returns defaults", ()
 
     localStorage.setItem(
       LLM_SETTINGS_STORAGE_KEY,
-      JSON.stringify({
-        provider: "openai-compatible",
-        openaiCompatible: {
-          baseURL: "https://api.example.com/v1",
-        },
+    JSON.stringify({
+      provider: "compatible",
+      compatible: {
+        baseURL: "https://api.example.com/v1",
+        apiKey: "key",
+        protocol: "auto",
+        outlineModel: "outline",
+        chapterModel: "chapter",
+        summaryModel: "summary",
+      },
       })
     );
 
@@ -190,13 +220,14 @@ test("RESET_LLM_SETTINGS restores default llm settings without a payload", () =>
     currentChapterId: null,
     llmSettings: {
       ...defaults,
-      provider: "openai-compatible" as const,
+      provider: "compatible" as const,
       gemini: {
         ...defaults.gemini,
         apiKey: "custom-g-key",
       },
-      openaiCompatible: {
-        ...defaults.openaiCompatible,
+      compatible: {
+        ...defaults.compatible,
+        protocol: "responses" as const,
         apiKey: "custom-o-key",
         baseURL: "https://api.example.com/v1",
       },
@@ -220,8 +251,8 @@ test("shouldClearStoredLlmSettings returns false for non-default settings", () =
   const defaults = withImportMetaEnv({}, () => getDefaultLlmSettings());
   const customSettings = {
     ...defaults,
-    openaiCompatible: {
-      ...defaults.openaiCompatible,
+    compatible: {
+      ...defaults.compatible,
       apiKey: "custom-o-key",
     },
   };

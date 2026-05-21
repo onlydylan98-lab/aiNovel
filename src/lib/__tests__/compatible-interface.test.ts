@@ -1,31 +1,33 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
 import {
-  buildOpenAIProxyRequest,
-  extractOpenAICompatibleResponseText,
-  extractOpenAICompatibleStreamText,
-} from "@/lib/openai-compatible";
+  buildCompatibleProxyRequest,
+  extractCompatibleResponseText,
+  extractCompatibleStreamText,
+  resolveCompatibleProtocol,
+} from "@/lib/compatible-interface";
 import type { LlmSettings } from "@/lib/llm-settings";
 
 const settings: LlmSettings = {
-  provider: "openai-compatible",
+  provider: "compatible",
   gemini: {
     apiKey: "",
     outlineModel: "",
     chapterModel: "",
     summaryModel: "",
   },
-  openaiCompatible: {
+  compatible: {
     baseURL: "https://freemodel.dev/api/compat/chat/completions",
     apiKey: "secret-key",
+    protocol: "auto",
     outlineModel: "test-outline",
     chapterModel: "test-chapter",
     summaryModel: "test-summary",
   },
 };
 
-test("buildOpenAIProxyRequest sends a standard chat completions body through the proxy", () => {
-  const request = buildOpenAIProxyRequest(settings, {
+test("buildCompatibleProxyRequest sends a standard chat completions body through the proxy", () => {
+  const request = buildCompatibleProxyRequest(settings.compatible, {
     model: "test-outline",
     prompt: "hello",
     stream: true,
@@ -49,14 +51,11 @@ test("buildOpenAIProxyRequest sends a standard chat completions body through the
   assert.deepEqual(body.messages, [{ role: "user", content: "hello" }]);
 });
 
-test("buildOpenAIProxyRequest uses responses payload for responses endpoints", () => {
-  const request = buildOpenAIProxyRequest(
+test("buildCompatibleProxyRequest uses responses payload for responses endpoints", () => {
+  const request = buildCompatibleProxyRequest(
     {
-      ...settings,
-      openaiCompatible: {
-        ...settings.openaiCompatible,
-        baseURL: "https://xiaohumini.site/v1/responses",
-      },
+      ...settings.compatible,
+      baseURL: "https://xiaohumini.site/v1/responses",
     },
     {
       model: "gpt-4.1",
@@ -75,9 +74,24 @@ test("buildOpenAIProxyRequest uses responses payload for responses endpoints", (
   assert.equal("messages" in body, false);
 });
 
-test("extractOpenAICompatibleResponseText reads chat completions payloads", () => {
+test("resolveCompatibleProtocol respects manual protocol selection", () => {
   assert.equal(
-    extractOpenAICompatibleResponseText({
+    resolveCompatibleProtocol("https://example.com/v1/chat/completions", "responses"),
+    "responses"
+  );
+});
+
+test("resolveCompatibleProtocol auto-detects responses URLs", () => {
+  assert.equal(resolveCompatibleProtocol("https://example.com/v1/responses", "auto"), "responses");
+});
+
+test("resolveCompatibleProtocol falls back to chat completions for ambiguous URLs", () => {
+  assert.equal(resolveCompatibleProtocol("https://example.com/v1", "auto"), "chat-completions");
+});
+
+test("extractCompatibleResponseText reads chat completions payloads", () => {
+  assert.equal(
+    extractCompatibleResponseText({
       choices: [
         {
           message: {
@@ -90,9 +104,9 @@ test("extractOpenAICompatibleResponseText reads chat completions payloads", () =
   );
 });
 
-test("extractOpenAICompatibleResponseText reads responses payloads", () => {
+test("extractCompatibleResponseText reads responses payloads", () => {
   assert.equal(
-    extractOpenAICompatibleResponseText({
+    extractCompatibleResponseText({
       output: [
         {
           type: "message",
@@ -109,9 +123,9 @@ test("extractOpenAICompatibleResponseText reads responses payloads", () => {
   );
 });
 
-test("extractOpenAICompatibleStreamText reads chat completions deltas", () => {
+test("extractCompatibleStreamText reads chat completions deltas", () => {
   assert.deepEqual(
-    extractOpenAICompatibleStreamText({
+    extractCompatibleStreamText({
       choices: [
         {
           delta: {
@@ -124,9 +138,9 @@ test("extractOpenAICompatibleStreamText reads chat completions deltas", () => {
   );
 });
 
-test("extractOpenAICompatibleStreamText reads responses deltas", () => {
+test("extractCompatibleStreamText reads responses deltas", () => {
   assert.deepEqual(
-    extractOpenAICompatibleStreamText({
+    extractCompatibleStreamText({
       type: "response.output_text.delta",
       delta: "responses delta",
     }),

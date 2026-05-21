@@ -1,11 +1,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { LlmSettings } from "@/lib/llm-settings";
-import { normalizeOpenAIBaseUrl } from "@/lib/llm-settings";
+import { normalizeCompatibleBaseUrl } from "@/lib/llm-settings";
 import {
-  buildOpenAIProxyRequest,
-  extractOpenAICompatibleResponseText,
-  extractOpenAICompatibleStreamText,
-} from "@/lib/openai-compatible";
+  buildCompatibleProxyRequest,
+  extractCompatibleResponseText,
+  extractCompatibleStreamText,
+} from "@/lib/compatible-interface";
 
 export interface NovelConfig {
   title: string;
@@ -41,7 +41,7 @@ function getGeminiClient(apiKey: string): GoogleGenAI {
   return new GoogleGenAI({ apiKey });
 }
 
-export { mergeStoredLlmSettings, normalizeOpenAIBaseUrl } from "@/lib/llm-settings";
+export { mergeStoredLlmSettings, normalizeCompatibleBaseUrl } from "@/lib/llm-settings";
 
 export function stripJsonFences(text: string): string {
   const trimmed = text.trim();
@@ -141,13 +141,17 @@ export function normalizeNovelOutline(parsed: unknown): NovelOutline {
   };
 }
 
-function getProviderErrorMessage(error: unknown): string {
+function getProviderErrorMessage(settings: LlmSettings, error: unknown): string {
   const detail =
     error instanceof Error && error.message
       ? ` 详细信息：${error.message}`
       : "";
 
-  return `请检查供应商、模型名、接口地址和 API Key 是否正确。OpenAI 兼容接口会直接使用你填写的地址。${detail}`;
+  if (settings.provider === "gemini") {
+    return `请检查 Gemini API Key 和模型名是否正确。${detail}`;
+  }
+
+  return `请检查接口类型、协议、模型名、接口地址和 API Key 是否正确。兼容接口会直接使用你填写的地址。${detail}`;
 }
 
 async function generateJson(
@@ -172,7 +176,7 @@ async function generateJson(
     return response.text || "{}";
   }
 
-  const content = await generateOpenAIChatCompletion(settings, {
+  const content = await generateCompatibleCompletion(settings, {
     model,
     prompt: `${prompt}\n\n请只返回合法 JSON，不要添加代码块、解释或额外文本。`,
     stream: false,
@@ -198,7 +202,7 @@ async function generateText(
     return response.text || "";
   }
 
-  return generateOpenAIChatCompletion(settings, {
+  return generateCompatibleCompletion(settings, {
     model,
     prompt,
     stream: false,
@@ -228,14 +232,14 @@ async function* generateTextStream(
     return;
   }
 
-  yield* generateOpenAIChatCompletionStream(settings, {
+  yield* generateCompatibleCompletionStream(settings, {
     model,
     prompt,
     temperature,
   });
 }
 
-async function generateOpenAIChatCompletion(
+async function generateCompatibleCompletion(
   settings: LlmSettings,
   options: {
     model: string;
@@ -244,17 +248,17 @@ async function generateOpenAIChatCompletion(
     temperature?: number;
   }
 ): Promise<string> {
-  const baseURL = normalizeOpenAIBaseUrl(settings.openaiCompatible.baseURL);
-  const apiKey = settings.openaiCompatible.apiKey.trim();
+  const baseURL = normalizeCompatibleBaseUrl(settings.compatible.baseURL);
+  const apiKey = settings.compatible.apiKey.trim();
 
   if (!baseURL) {
-    throw new Error("OpenAI-compatible Base URL is missing.");
+    throw new Error("Compatible interface Base URL is missing.");
   }
   if (!apiKey) {
-    throw new Error("OpenAI-compatible API Key is missing.");
+    throw new Error("Compatible interface API Key is missing.");
   }
 
-  const proxyRequest = buildOpenAIProxyRequest(settings, {
+  const proxyRequest = buildCompatibleProxyRequest(settings.compatible, {
     model: options.model,
     prompt: options.prompt,
     stream: false,
@@ -265,19 +269,19 @@ async function generateOpenAIChatCompletion(
 
   if (!response.ok) {
     const detail = await safeReadErrorBody(response);
-    throw new Error(`OpenAI-compatible request failed with ${response.status}.${detail ? ` ${detail}` : ""}`);
+    throw new Error(`Compatible interface request failed with ${response.status}.${detail ? ` ${detail}` : ""}`);
   }
 
   const json = await response.json();
-  const content = extractOpenAICompatibleResponseText(json);
+  const content = extractCompatibleResponseText(json);
   if (content) {
     return content;
   }
 
-  throw new Error("OpenAI-compatible response did not contain message content.");
+  throw new Error("Compatible interface response did not contain message content.");
 }
 
-async function* generateOpenAIChatCompletionStream(
+async function* generateCompatibleCompletionStream(
   settings: LlmSettings,
   options: {
     model: string;
@@ -285,17 +289,17 @@ async function* generateOpenAIChatCompletionStream(
     temperature?: number;
   }
 ) {
-  const baseURL = normalizeOpenAIBaseUrl(settings.openaiCompatible.baseURL);
-  const apiKey = settings.openaiCompatible.apiKey.trim();
+  const baseURL = normalizeCompatibleBaseUrl(settings.compatible.baseURL);
+  const apiKey = settings.compatible.apiKey.trim();
 
   if (!baseURL) {
-    throw new Error("OpenAI-compatible Base URL is missing.");
+    throw new Error("Compatible interface Base URL is missing.");
   }
   if (!apiKey) {
-    throw new Error("OpenAI-compatible API Key is missing.");
+    throw new Error("Compatible interface API Key is missing.");
   }
 
-  const proxyRequest = buildOpenAIProxyRequest(settings, {
+  const proxyRequest = buildCompatibleProxyRequest(settings.compatible, {
     model: options.model,
     prompt: options.prompt,
     stream: true,
@@ -306,7 +310,7 @@ async function* generateOpenAIChatCompletionStream(
 
   if (!response.ok || !response.body) {
     const detail = await safeReadErrorBody(response);
-    throw new Error(`OpenAI-compatible stream failed with ${response.status}.${detail ? ` ${detail}` : ""}`);
+    throw new Error(`Compatible interface stream failed with ${response.status}.${detail ? ` ${detail}` : ""}`);
   }
 
   const reader = response.body.getReader();
@@ -337,7 +341,7 @@ async function* generateOpenAIChatCompletionStream(
 
         try {
           const parsed = JSON.parse(payload);
-          const chunks = extractOpenAICompatibleStreamText(parsed);
+          const chunks = extractCompatibleStreamText(parsed);
           for (const chunk of chunks) {
             if (chunk.length > 0) {
               yield chunk;
@@ -411,7 +415,7 @@ export async function generateNovelOutline(
       prompt,
       settings.provider === "gemini"
         ? settings.gemini.outlineModel
-        : settings.openaiCompatible.outlineModel,
+        : settings.compatible.outlineModel,
       {
         type: Type.OBJECT,
         properties: {
@@ -438,7 +442,7 @@ export async function generateNovelOutline(
 
     return normalizeNovelOutline(extractJson(rawText));
   } catch (error) {
-    throw new Error(getProviderErrorMessage(error));
+    throw new Error(getProviderErrorMessage(settings, error));
   }
 }
 
@@ -489,7 +493,7 @@ ${outline.chapters.slice(-3).map((c) => `第${c.chapterNumber}章 ${c.title}: ${
       prompt,
       settings.provider === "gemini"
         ? settings.gemini.outlineModel
-        : settings.openaiCompatible.outlineModel,
+        : settings.compatible.outlineModel,
       {
         type: Type.OBJECT,
         properties: {
@@ -513,7 +517,7 @@ ${outline.chapters.slice(-3).map((c) => `第${c.chapterNumber}章 ${c.title}: ${
 
     return normalizeChapters((extractJson<{ chapters: unknown }>(rawText)).chapters);
   } catch (error) {
-    throw new Error(getProviderErrorMessage(error));
+    throw new Error(getProviderErrorMessage(settings, error));
   }
 }
 
@@ -568,11 +572,11 @@ export async function* generateChapterStream(
     const model =
       settings.provider === "gemini"
         ? settings.gemini.chapterModel
-        : settings.openaiCompatible.chapterModel;
+        : settings.compatible.chapterModel;
 
     yield* generateTextStream(settings, context, model, 0.9);
   } catch (error) {
-    throw new Error(getProviderErrorMessage(error));
+    throw new Error(getProviderErrorMessage(settings, error));
   }
 }
 
@@ -586,9 +590,9 @@ export async function generateChapterSummary(
     const model =
       settings.provider === "gemini"
         ? settings.gemini.summaryModel
-        : settings.openaiCompatible.summaryModel;
+        : settings.compatible.summaryModel;
     return await generateText(settings, prompt, model);
   } catch (error) {
-    throw new Error(getProviderErrorMessage(error));
+    throw new Error(getProviderErrorMessage(settings, error));
   }
 }

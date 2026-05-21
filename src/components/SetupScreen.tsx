@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useStore } from "@/store";
 import { generateNovelOutline, NovelConfig } from "@/lib/gemini";
-import type { LlmSettings, ProviderType } from "@/store";
+import type { CompatibleProtocol, LlmSettings, ProviderType } from "@/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -54,7 +54,10 @@ export function SetupScreen() {
     updateLlmSettings({ ...llmSettings, provider });
   };
 
-  const updateGeminiField = (field: keyof LlmSettings["gemini"], value: string) => {
+  const updateGeminiField = <K extends keyof LlmSettings["gemini"]>(
+    field: K,
+    value: LlmSettings["gemini"][K]
+  ) => {
     updateLlmSettings({
       ...llmSettings,
       gemini: {
@@ -64,14 +67,14 @@ export function SetupScreen() {
     });
   };
 
-  const updateOpenAIField = (
-    field: keyof LlmSettings["openaiCompatible"],
-    value: string
+  const updateCompatibleField = <K extends keyof LlmSettings["compatible"]>(
+    field: K,
+    value: LlmSettings["compatible"][K]
   ) => {
     updateLlmSettings({
       ...llmSettings,
-      openaiCompatible: {
-        ...llmSettings.openaiCompatible,
+      compatible: {
+        ...llmSettings.compatible,
         [field]: value,
       },
     });
@@ -148,8 +151,8 @@ export function SetupScreen() {
                   默认值来自当前项目配置；你在这里的修改会保存到当前浏览器，并覆盖这些默认值。
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  重置会清除浏览器中保存的 AI 覆盖设置，并恢复当前默认值。OpenAI 兼容接口仍支持填写完整的
-                  `/v1/chat/completions` 和 `/v1/responses` 地址。
+                  重置会清除浏览器中保存的 AI 覆盖设置，并恢复当前默认值。兼容接口支持填写完整的
+                  `/v1/chat/completions` 和 `/v1/responses` 地址，也支持手动指定协议。
                 </p>
               </div>
               <Button
@@ -167,14 +170,14 @@ export function SetupScreen() {
                 variant={llmSettings.provider === "gemini" ? "default" : "outline"}
                 onClick={() => updateProvider("gemini")}
               >
-                Gemini
+                官方 Gemini
               </Button>
               <Button
                 type="button"
-                variant={llmSettings.provider === "openai-compatible" ? "default" : "outline"}
-                onClick={() => updateProvider("openai-compatible")}
+                variant={llmSettings.provider === "compatible" ? "default" : "outline"}
+                onClick={() => updateProvider("compatible")}
               >
-                OpenAI 兼容接口
+                兼容接口
               </Button>
             </div>
 
@@ -220,50 +223,71 @@ export function SetupScreen() {
             ) : (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="openai-base-url">Base URL</Label>
+                  <Label htmlFor="compatible-base-url">Base URL</Label>
                   <Input
-                    id="openai-base-url"
+                    id="compatible-base-url"
                     placeholder="https://your-provider.example/v1/chat/completions 或 /v1/responses"
-                    value={llmSettings.openaiCompatible.baseURL}
-                    onChange={(e) => updateOpenAIField("baseURL", e.target.value)}
+                    value={llmSettings.compatible.baseURL}
+                    onChange={(e) => updateCompatibleField("baseURL", e.target.value)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    支持填写完整的 `/v1/chat/completions` 或 `/v1/responses` 地址，程序会按对应协议发送请求。
+                    兼容接口适用于任何提供兼容端点的厂商，模型名和厂商独立于协议类型。
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="openai-api-key">API Key</Label>
+                  <Label htmlFor="compatible-api-key">API Key</Label>
                   <Input
-                    id="openai-api-key"
+                    id="compatible-api-key"
                     type="password"
-                    placeholder="sk-..."
-                    value={llmSettings.openaiCompatible.apiKey}
-                    onChange={(e) => updateOpenAIField("apiKey", e.target.value)}
+                    placeholder="sk-... / AIza..."
+                    value={llmSettings.compatible.apiKey}
+                    onChange={(e) => updateCompatibleField("apiKey", e.target.value)}
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="compatible-protocol">协议类型</Label>
+                  <select
+                    id="compatible-protocol"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                    value={llmSettings.compatible.protocol}
+                    onChange={(e) =>
+                      updateCompatibleField(
+                        "protocol",
+                        e.target.value as CompatibleProtocol
+                      )
+                    }
+                  >
+                    <option value="auto">自动识别</option>
+                    <option value="chat-completions">Chat Completions</option>
+                    <option value="responses">Responses</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    自动识别会优先根据 URL 中的 `/chat/completions` 或 `/responses` 判断；如果供应商实现不标准，可手动切换。
+                  </p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="openai-outline-model">大纲模型</Label>
+                    <Label htmlFor="compatible-outline-model">大纲模型</Label>
                     <Input
-                      id="openai-outline-model"
-                      value={llmSettings.openaiCompatible.outlineModel}
-                      onChange={(e) => updateOpenAIField("outlineModel", e.target.value)}
+                      id="compatible-outline-model"
+                      value={llmSettings.compatible.outlineModel}
+                      onChange={(e) => updateCompatibleField("outlineModel", e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="openai-chapter-model">正文模型</Label>
+                    <Label htmlFor="compatible-chapter-model">正文模型</Label>
                     <Input
-                      id="openai-chapter-model"
-                      value={llmSettings.openaiCompatible.chapterModel}
-                      onChange={(e) => updateOpenAIField("chapterModel", e.target.value)}
+                      id="compatible-chapter-model"
+                      value={llmSettings.compatible.chapterModel}
+                      onChange={(e) => updateCompatibleField("chapterModel", e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="openai-summary-model">摘要模型</Label>
+                    <Label htmlFor="compatible-summary-model">摘要模型</Label>
                     <Input
-                      id="openai-summary-model"
-                      value={llmSettings.openaiCompatible.summaryModel}
-                      onChange={(e) => updateOpenAIField("summaryModel", e.target.value)}
+                      id="compatible-summary-model"
+                      value={llmSettings.compatible.summaryModel}
+                      onChange={(e) => updateCompatibleField("summaryModel", e.target.value)}
                     />
                   </div>
                 </div>
