@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useStore } from "@/store";
-import { generateNovelOutline, NovelConfig } from "@/lib/gemini";
-import type { CompatibleProtocol, LlmSettings, ProviderType } from "@/store";
+import { generateNovelOutline } from "@/lib/gemini";
+import type { NovelConfig } from "@/domain/novel/types";
+import type { LlmSettings, ProviderType } from "@/lib/llm-settings";
+import { ProviderSettingsPanel } from "@/components/setup/ProviderSettingsPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 
 const EXAMPLE_CONFIG: NovelConfig = {
@@ -142,158 +144,13 @@ export function SetupScreen() {
               onChange={(e) => setConfig({ ...config, tone: e.target.value })}
             />
           </div>
-
-          <div className="rounded-xl border bg-muted/30 p-4 space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-1">
-                <h3 className="text-lg font-semibold">AI 接口配置</h3>
-                <p className="text-sm text-muted-foreground">
-                  默认值来自当前项目配置；你在这里的修改会保存到当前浏览器，并覆盖这些默认值。
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  重置会清除浏览器中保存的 AI 覆盖设置，并恢复当前默认值。兼容接口支持填写完整的
-                  `/v1/chat/completions` 和 `/v1/responses` 地址，也支持手动指定协议。
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => dispatch({ type: "RESET_LLM_SETTINGS" })}
-              >
-                重置为当前默认值
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Button
-                type="button"
-                variant={llmSettings.provider === "gemini" ? "default" : "outline"}
-                onClick={() => updateProvider("gemini")}
-              >
-                官方 Gemini
-              </Button>
-              <Button
-                type="button"
-                variant={llmSettings.provider === "compatible" ? "default" : "outline"}
-                onClick={() => updateProvider("compatible")}
-              >
-                兼容接口
-              </Button>
-            </div>
-
-            {llmSettings.provider === "gemini" ? (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="gemini-api-key">Gemini API Key</Label>
-                  <Input
-                    id="gemini-api-key"
-                    type="password"
-                    placeholder="AIza..."
-                    value={llmSettings.gemini.apiKey}
-                    onChange={(e) => updateGeminiField("apiKey", e.target.value)}
-                  />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="gemini-outline-model">大纲模型</Label>
-                    <Input
-                      id="gemini-outline-model"
-                      value={llmSettings.gemini.outlineModel}
-                      onChange={(e) => updateGeminiField("outlineModel", e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="gemini-chapter-model">正文模型</Label>
-                    <Input
-                      id="gemini-chapter-model"
-                      value={llmSettings.gemini.chapterModel}
-                      onChange={(e) => updateGeminiField("chapterModel", e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="gemini-summary-model">摘要模型</Label>
-                    <Input
-                      id="gemini-summary-model"
-                      value={llmSettings.gemini.summaryModel}
-                      onChange={(e) => updateGeminiField("summaryModel", e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="compatible-base-url">Base URL</Label>
-                  <Input
-                    id="compatible-base-url"
-                    placeholder="https://your-provider.example/v1/chat/completions 或 /v1/responses"
-                    value={llmSettings.compatible.baseURL}
-                    onChange={(e) => updateCompatibleField("baseURL", e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    兼容接口适用于任何提供兼容端点的厂商，模型名和厂商独立于协议类型。
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="compatible-api-key">API Key</Label>
-                  <Input
-                    id="compatible-api-key"
-                    type="password"
-                    placeholder="sk-... / AIza..."
-                    value={llmSettings.compatible.apiKey}
-                    onChange={(e) => updateCompatibleField("apiKey", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="compatible-protocol">协议类型</Label>
-                  <select
-                    id="compatible-protocol"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-                    value={llmSettings.compatible.protocol}
-                    onChange={(e) =>
-                      updateCompatibleField(
-                        "protocol",
-                        e.target.value as CompatibleProtocol
-                      )
-                    }
-                  >
-                    <option value="auto">自动识别</option>
-                    <option value="chat-completions">Chat Completions</option>
-                    <option value="responses">Responses</option>
-                  </select>
-                  <p className="text-xs text-muted-foreground">
-                    自动识别会优先根据 URL 中的 `/chat/completions` 或 `/responses` 判断；如果供应商实现不标准，可手动切换。
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="compatible-outline-model">大纲模型</Label>
-                    <Input
-                      id="compatible-outline-model"
-                      value={llmSettings.compatible.outlineModel}
-                      onChange={(e) => updateCompatibleField("outlineModel", e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="compatible-chapter-model">正文模型</Label>
-                    <Input
-                      id="compatible-chapter-model"
-                      value={llmSettings.compatible.chapterModel}
-                      onChange={(e) => updateCompatibleField("chapterModel", e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="compatible-summary-model">摘要模型</Label>
-                    <Input
-                      id="compatible-summary-model"
-                      value={llmSettings.compatible.summaryModel}
-                      onChange={(e) => updateCompatibleField("summaryModel", e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <ProviderSettingsPanel
+            llmSettings={llmSettings}
+            onProviderChange={updateProvider}
+            onGeminiFieldChange={updateGeminiField}
+            onCompatibleFieldChange={updateCompatibleField}
+            onReset={() => dispatch({ type: "RESET_LLM_SETTINGS" })}
+          />
         </CardContent>
         <CardFooter className="flex justify-between items-center bg-muted/50 p-6">
            <Button variant="ghost" onClick={handleFillExample} disabled={isGenerating}>

@@ -9,10 +9,11 @@ import {
 } from "@/lib/llm-settings";
 import {
   LLM_SETTINGS_STORAGE_KEY,
-  reduceStoreState,
   resetStoredLlmSettings,
   shouldClearStoredLlmSettings,
-} from "@/store";
+} from "@/store/persistence";
+import { reduceStoreState } from "@/store/reducer";
+import type { State } from "@/store/types";
 
 const baseSettings: LlmSettings = {
   provider: "gemini",
@@ -213,7 +214,7 @@ test("resetStoredLlmSettings clears persisted settings and returns defaults", ()
 
 test("RESET_LLM_SETTINGS restores default llm settings without a payload", () => {
   const defaults = withImportMetaEnv({}, () => getDefaultLlmSettings());
-  const stateWithCustomSettings = {
+  const stateWithCustomSettings: State = {
     appState: "setup" as const,
     config: null,
     outline: null,

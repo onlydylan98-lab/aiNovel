@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { normalizeNovelOutline } from "@/lib/gemini";
+import { normalizeNovelOutline } from "../novel-generation";
 
 test("normalizeNovelOutline accepts characterProfiles returned as structured objects", () => {
   const outline = normalizeNovelOutline({

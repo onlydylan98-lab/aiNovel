@@ -191,3 +191,136 @@ export function buildCompatibleProxyRequest(
     } satisfies RequestInit,
   };
 }
+
+export async function generateCompatibleCompletion(
+  settings: CompatibleSettings,
+  options: {
+    model: string;
+    prompt: string;
+    stream: false;
+    temperature?: number;
+  }
+): Promise<string> {
+  const proxyRequest = buildCompatibleProxyRequest(settings, {
+    model: options.model,
+    prompt: options.prompt,
+    stream: false,
+    temperature: options.temperature,
+  });
+
+  const response = await fetch(proxyRequest.url, proxyRequest.init);
+
+  if (!response.ok) {
+    const detail = await safeReadErrorBody(response);
+    throw new Error(
+      `Compatible interface request failed with ${response.status}.${detail ? ` ${detail}` : ""}`
+    );
+  }
+
+  const json = await response.json();
+  const content = extractCompatibleResponseText(json);
+  if (content) {
+    return content;
+  }
+
+  throw new Error("Compatible interface response did not contain message content.");
+}
+
+export async function* generateCompatibleCompletionStream(
+  settings: CompatibleSettings,
+  options: {
+    model: string;
+    prompt: string;
+    temperature?: number;
+  }
+) {
+  const proxyRequest = buildCompatibleProxyRequest(settings, {
+    model: options.model,
+    prompt: options.prompt,
+    stream: true,
+    temperature: options.temperature,
+  });
+
+  const response = await fetch(proxyRequest.url, proxyRequest.init);
+
+  if (!response.ok || !response.body) {
+    const detail = await safeReadErrorBody(response);
+    throw new Error(
+      `Compatible interface stream failed with ${response.status}.${detail ? ` ${detail}` : ""}`
+    );
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+
+    const events = buffer.split("\n\n");
+    buffer = events.pop() ?? "";
+
+    for (const event of events) {
+      const lines = event
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith("data:"));
+
+      for (const line of lines) {
+        const payload = line.slice(5).trim();
+        if (!payload) {
+          continue;
+        }
+        if (payload === "[DONE]") {
+          return;
+        }
+
+        try {
+          const parsed = JSON.parse(payload);
+          const chunks = extractCompatibleStreamText(parsed);
+          for (const chunk of chunks) {
+            if (chunk.length > 0) {
+              yield chunk;
+            }
+          }
+        } catch {
+          // Ignore malformed keep-alive chunks from third-party implementations.
+        }
+      }
+    }
+
+    if (done) {
+      return;
+    }
+  }
+}
+
+async function safeReadErrorBody(response: Response): Promise<string> {
+  try {
+    const text = await response.text();
+    if (!text) {
+      return "";
+    }
+
+    try {
+      const parsed = JSON.parse(text) as {
+        error?: unknown;
+        targetUrl?: unknown;
+        upstreamBody?: unknown;
+      };
+      const pieces = [
+        typeof parsed.error === "string" ? parsed.error : "",
+        typeof parsed.targetUrl === "string" ? `target=${parsed.targetUrl}` : "",
+        typeof parsed.upstreamBody === "string" && parsed.upstreamBody.trim()
+          ? `upstream=${parsed.upstreamBody.trim()}`
+          : "",
+      ].filter(Boolean);
+      return pieces.join(" ");
+    } catch {
+      return text;
+    }
+  } catch {
+    return "";
+  }
+}

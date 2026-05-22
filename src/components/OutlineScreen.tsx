@@ -1,13 +1,12 @@
 import { useStore } from "@/store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { generateNovelOutline, NovelOutline } from "@/lib/gemini";
+import { generateNovelOutline } from "@/lib/gemini";
+import type { NovelOutline } from "@/domain/novel/types";
 import { useState } from "react";
+import { ChapterOutlineList } from "@/components/outline/ChapterOutlineList";
+import { OutlineMetaEditor } from "@/components/outline/OutlineMetaEditor";
 import { Loader2, BookOpen, PenTool } from "lucide-react";
 
 export function OutlineScreen() {
@@ -72,32 +71,12 @@ export function OutlineScreen() {
           </CardHeader>
           <CardContent className="flex-1 overflow-hidden">
             <ScrollArea className="h-full pr-4 text-sm">
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <Label className="font-semibold text-lg text-primary">主线梗概</Label>
-                  <Textarea
-                    className="min-h-[150px] resize-none focus-visible:ring-1"
-                    value={outline.synopsis}
-                    onChange={(e) => updateField("synopsis", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="font-semibold text-lg text-primary">世界观与力量体系</Label>
-                  <Textarea
-                    className="min-h-[150px] resize-none focus-visible:ring-1"
-                    value={outline.worldview}
-                    onChange={(e) => updateField("worldview", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="font-semibold text-lg text-primary">人物设定</Label>
-                  <Textarea
-                    className="min-h-[150px] resize-none focus-visible:ring-1"
-                    value={outline.characterProfiles}
-                    onChange={(e) => updateField("characterProfiles", e.target.value)}
-                  />
-                </div>
-              </div>
+              <OutlineMetaEditor
+                synopsis={outline.synopsis}
+                worldview={outline.worldview}
+                characterProfiles={outline.characterProfiles}
+                onFieldChange={updateField}
+              />
             </ScrollArea>
           </CardContent>
         </Card>
@@ -108,34 +87,9 @@ export function OutlineScreen() {
             <CardDescription>展开可编辑章节名与本章细纲</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 overflow-hidden">
-             <ScrollArea className="h-full pr-4">
-                <Accordion type="single" collapsible className="w-full">
-                  {outline.chapters.map((chapter) => (
-                    <AccordionItem value={chapter.chapterNumber.toString()} key={chapter.chapterNumber}>
-                      <AccordionTrigger className="text-left font-medium hover:text-primary">
-                        第{chapter.chapterNumber}章：{chapter.title}
-                      </AccordionTrigger>
-                      <AccordionContent className="px-1 space-y-4 pt-2">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs uppercase tracking-wider text-muted-foreground">章节标题</Label>
-                          <Input
-                            value={chapter.title}
-                            onChange={(e) => updateChapter(chapter.chapterNumber, { title: e.target.value })}
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs uppercase tracking-wider text-muted-foreground">本章细纲</Label>
-                          <Textarea
-                            rows={4}
-                            value={chapter.synopsis}
-                            onChange={(e) => updateChapter(chapter.chapterNumber, { synopsis: e.target.value })}
-                          />
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  ))}
-                </Accordion>
-             </ScrollArea>
+            <ScrollArea className="h-full pr-4">
+              <ChapterOutlineList chapters={outline.chapters} onUpdateChapter={updateChapter} />
+            </ScrollArea>
           </CardContent>
         </Card>
       </div>
